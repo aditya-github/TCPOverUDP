@@ -138,7 +138,7 @@ class Client
 
          ControlBit = revpkt.getControlBit();
 
-         System.out.println("No FINs yet!");
+         //System.out.println("No FINs yet!");
       }
 
       System.out.println("Out of the Loooop");

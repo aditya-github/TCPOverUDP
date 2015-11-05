@@ -8,11 +8,12 @@ class TimerPair
    public int SequenceNumber;
    public long Timeout;
 
-   public TimerPair(int SequenceNumber, Timeout)
+   public TimerPair(int SequenceNumber, long Timeout)
    {
       this.SequenceNumber = SequenceNumber;
       this.Timeout = Timeout;
    }
+   
 }
 
 public class Server
@@ -27,7 +28,11 @@ public class Server
 
    int CurrentSeqNumber;
    int CurrentAckNumber;
-
+   
+   Timer timer = new Timer();
+   
+   boolean timeout = false;
+   
    boolean CurrentFinish;
 
    float CongestionWindow;
@@ -90,8 +95,6 @@ public class Server
    {
       byte[] sendData = new byte[1024];
 
-      int SequenceNumber = 1;
-      int AckNumber = 1;
 
       TCPPacket pkt = new TCPPacket(ServerIP, ServerPort, ClientIP, ClientPort, CurrentSeqNumber, CurrentAckNumber , (int)CongestionWindow, ControlBit, stringData);
       sendData = pkt.getStringPacket().getBytes();
@@ -114,6 +117,7 @@ public class Server
       return revpkt; 
    }
 
+   
    public void Handshake(InetAddress ClientIP, int ClientPort) throws IOException
    {
       // Send Syn+Ack
@@ -155,14 +159,46 @@ public class Server
          CongestionWindow += 1.0;
       else
          CongestionWindow += 1.0/CongestionWindow;
-
-      if(CongestionWindow > 100)
-         CongestionWindow = 100;
    }
 
+   
+   void decrementCW()
+   {
+	   CongestionWindow /= 2;
+	   
+   }
+   
    void removeFromQueue(int acknum)
    {
-      
+	   //Iterator itr = TimerQ.iterator();
+	   
+	   Boolean found = false;
+	   
+	   while(!found && !TimerQ.isEmpty()){
+		   TimerPair tp = TimerQ.get(0);
+		   if(tp.SequenceNumber <= acknum){
+			   TimerQ.remove(0);
+			   System.out.println("Ack got and Queue element poped");
+		   }
+		   else{
+			   found = true;
+		   }
+	   }
+   }
+   
+   void putInQueue()
+   {
+	 //add packet number and its timeout in TimerQ
+	      
+	   long current_time = System.currentTimeMillis();
+	   long timeout = current_time + 1;
+	   
+	   TimerPair tp_now = new TimerPair(CurrentSeqNumber,timeout);
+	      
+	   TimerQ.add(tp_now);
+	      
+	   System.out.println("Timer Pair (" + tp_now.SequenceNumber + " , " + tp_now.Timeout + " ) " + TimerQ.isEmpty() + " size = " + TimerQ.size());
+	      
    }
 
 
@@ -217,6 +253,7 @@ public class Server
          this.CurrentSeqNumber = (PacketNumberToSend + 1) + 1 + i;
 
          SendPacket(stringpkt, ControlBit);
+         putInQueue();
       }
    }
 
@@ -231,6 +268,33 @@ public class Server
       SendPacket(stringpkt, ControlBit);
    }
 
+   class Timertask extends TimerTask 
+   {
+   	public void run()
+   	{
+   		if(!TimerQ.isEmpty())
+ 	   {
+ 		   TimerPair tp = TimerQ.get(0);
+ 		   if(tp.Timeout < System.currentTimeMillis())
+ 		   {
+ 			   TimerQ.clear();
+ 			   decrementCW(); 			   
+ 		   }
+ 	   }
+   		System.out.println("Time check");
+   	}
+   }
+   
+   public void timeoutcheck()
+   {
+	   timer.schedule(new Timertask(),0, 50);
+   }
+   
+   public void timerexit()
+   {
+	   timer.cancel();
+   }
+
 
    public static void main(String args[]) throws Exception, UnknownHostException
       {
@@ -240,6 +304,9 @@ public class Server
          Server thisServer = new Server(ServerIP, ServerPort);
 
          thisServer.serverSocket.setSoTimeout(10000); 
+         
+         thisServer.timeoutcheck();
+          
 
          while(true)
          {
@@ -248,10 +315,21 @@ public class Server
 
             thisServer.ProcessPacket(revpkt);
 
-            if(!thisServer.CurrentFinish)
-               thisServer.SendNextPackets();
+            if(thisServer.CurrentAckNumber < 1000)
+            {
+            	if(thisServer.TimerQ.isEmpty())
+            		thisServer.SendNextPackets();
+            }
             else
-               thisServer.SendFin();
+            {	
+            	thisServer.SendFin();
+            	System.out.println("Fin sent");
+            	while(!thisServer.TimerQ.isEmpty()){
+            		System.out.println(thisServer.TimerQ.get(0).SequenceNumber);
+            		thisServer.TimerQ.remove(0);
+            	}
+            	thisServer.timerexit();
+            }
          }
       }
 } 
