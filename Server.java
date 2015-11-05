@@ -3,7 +3,19 @@ import java.net.*;
 import java.util.*;
 import java.util.Random;
 
-class Server
+class TimerPair
+{
+   public int SequenceNumber;
+   public long Timeout;
+
+   public TimerPair(int SequenceNumber, Timeout)
+   {
+      this.SequenceNumber = SequenceNumber;
+      this.Timeout = Timeout;
+   }
+}
+
+public class Server
 {
    DatagramSocket serverSocket;
    
@@ -23,6 +35,8 @@ class Server
 
    ArrayList<String> PacketList;
    int FixedPacketSize;
+
+   ArrayList<TimerPair> TimerQ;
 
    // Code for generating random Strings for packets
    static final String AB = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -67,7 +81,9 @@ class Server
 
       // Create data that the server transmits on request
       createPacketList();
-      printPacketList();
+      //printPacketList();
+
+      TimerQ = new ArrayList<TimerPair>();
    }
 
    public void SendPacket(String stringData, Boolean[] ControlBit) throws IOException
@@ -144,6 +160,12 @@ class Server
          CongestionWindow = 100;
    }
 
+   void removeFromQueue(int acknum)
+   {
+      
+   }
+
+
    public void ProcessPacket(TCPPacket revpkt) throws IOException
    {
       Boolean[] ControlBit = revpkt.getControlBit();
@@ -158,6 +180,10 @@ class Server
       }
       else if(ControlBit[1])
       {
+         int acknum = revpkt.getAckNumber();
+
+         removeFromQueue(acknum);   
+
          incrementCW();
 
          if (CurrentAckNumber < revpkt.getAckNumber())
