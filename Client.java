@@ -146,8 +146,8 @@ class Client
 
    public static void main(String args[]) throws Exception, UnknownHostException
    {
-      InetAddress ServerIP = InetAddress.getByName("localhost");
-      InetAddress ClientIP = ServerIP;
+      InetAddress ServerIP = InetAddress.getByName("");
+      InetAddress ClientIP = InetAddress.getByName("localhost");
       int ServerPort = 9999;
 
       Client thisClient = new Client(ClientIP, ServerIP, ServerPort);
