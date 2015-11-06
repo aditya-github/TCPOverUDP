@@ -48,6 +48,8 @@ public class Server
    int DupCount;
    int LastAcknum;
 
+   int timeOutPeriod;
+
    // Code for generating random Strings for packets
    static final String AB = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
    static Random rnd = new Random();
@@ -330,7 +332,9 @@ public class Server
 
    public static void main(String args[]) throws Exception, UnknownHostException
       {
-         InetAddress ServerIP = InetAddress.getByName("localhost");
+         InetAddress ServerIP = InetAddress.getLocalHost();
+         System.out.println(ServerIP);
+
          int ServerPort = 9999;
 
          Server thisServer = new Server(ServerIP, ServerPort);
