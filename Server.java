@@ -48,9 +48,12 @@ public class Server
    int DupCount;
    int LastAcknum;
 
-   int timeoutperoid = 50;
+   long timeOutPeriod;
+   double smoothrtt;
+   double rttdev;
 
    // Code for generating random Strings for packets
+   // -----------------------------------------------------------------------------------------------------------------
    static final String AB = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
    static Random rnd = new Random();
 
@@ -72,7 +75,10 @@ public class Server
    {
       for(int i = 0; i < PacketList.size(); i++)
          System.out.println(PacketList.get(i));
-   } 
+   }
+
+   // Constructor
+   // ----------------------------------------------------------------------------------------------------------------- 
 
    public Server(InetAddress ServerIP, int ServerPort) throws SocketException, FileNotFoundException
    {
@@ -102,7 +108,13 @@ public class Server
       DupCount = 1;
       LastAcknum = 0;
 
+      timeOutPeriod = 10;
+      smoothrtt = 10;
+      rttdev = 3;
    }
+
+   // Low Level Functions to send and receive packets
+   // -----------------------------------------------------------------------------------------------------------------
 
    public void SendPacket(String stringData, Boolean[] ControlBit) throws IOException
    {
@@ -130,7 +142,9 @@ public class Server
       return revpkt; 
    }
 
-   
+   // Handshake
+   // -----------------------------------------------------------------------------------------------------------------
+
    public void Handshake(InetAddress ClientIP, int ClientPort) throws IOException
    {
       // Send Syn+Ack
@@ -166,6 +180,9 @@ public class Server
       CongestionWindow = 1;
    }
 
+   // Functions implementing Congestion Control 
+   // -----------------------------------------------------------------------------------------------------------------
+
    void incrementCW()
    {
       if((int)CongestionWindow < SSThreshold)
@@ -175,7 +192,6 @@ public class Server
 
       writer.println(CongestionWindow + "");
    }
-
    
    void Timeout()
    {
@@ -195,6 +211,21 @@ public class Server
       writer.println(CongestionWindow + "");
    }
    
+   // Checking for Timeouts
+   // -----------------------------------------------------------------------------------------------------------------
+
+   public void CalcTO(long rtt)
+   {
+      //System.out.println(rtt + "");
+
+      smoothrtt = 0.9 * smoothrtt + 0.1 * rtt;
+      
+      double diff = Math.abs(smoothrtt - rtt);
+      rttdev = 0.9 * rttdev + 0.1 * diff;
+
+      timeOutPeriod = (long)smoothrtt + (long)(4 * rttdev);
+   }
+
    void removeFromQueue(int acknum)
    {
 	   //Iterator itr = TimerQ.iterator();
@@ -204,6 +235,7 @@ public class Server
 	   while(!found && !TimerQ.isEmpty()){
 		   TimerPair tp = TimerQ.get(0);
 		   if(tp.SequenceNumber <= acknum){
+            CalcTO(System.currentTimeMillis() - tp.Timeout);
 			   TimerQ.remove(0);
 			   //System.out.println("Ack got and Queue element poped");
 		   }
@@ -218,12 +250,41 @@ public class Server
 	 //add packet number and its timeout in TimerQ
 	      
 	   long current_time = System.currentTimeMillis();
-	   long timeout = current_time + timeoutperoid;
+	   long timeout = current_time;
 	   
 	   TimerPair tp_now = new TimerPair(CurrentSeqNumber,timeout);
 	      
 	   TimerQ.add(tp_now);
    }
+
+   class Timertask extends TimerTask 
+   {
+      public void run()
+      {
+         if(!TimerQ.isEmpty())
+         {
+            TimerPair tp = TimerQ.get(0);
+            if(tp.Timeout + timeOutPeriod < System.currentTimeMillis())
+            {
+               TimerQ.clear();
+               Timeout();           
+            }
+         }
+         //System.out.println("Time check");
+      }
+   }
+   
+   public void timeoutcheck()
+   {
+      timer.schedule(new Timertask(),0, 5);
+   }
+   
+   public void timerexit()
+   {
+      timer.cancel();
+   }
+
+   // -----------------------------------------------------------------------------------------------------------------
 
    public void ProcessPacket(TCPPacket revpkt) throws IOException
    {
@@ -252,8 +313,8 @@ public class Server
 
          LastAcknum = acknum;
 
-         //if(DupCount == 3)
-         //   tripleDuplication();
+         if(DupCount == 3)
+            tripleDuplication();
 
          if (CurrentAckNumber < revpkt.getAckNumber())
             CurrentAckNumber = revpkt.getAckNumber();         
@@ -300,70 +361,48 @@ public class Server
       SendPacket(stringpkt, ControlBit);
    }
 
-   class Timertask extends TimerTask 
-   {
-   	public void run()
-   	{
-   		if(!TimerQ.isEmpty())
-   	   {
-   		   TimerPair tp = TimerQ.get(0);
-   		   if(tp.Timeout < System.currentTimeMillis())
-   		   {
-   			   TimerQ.clear();
-   			   Timeout(); 			   
-   		   }
-   	   }
-   		//System.out.println("Time check");
-   	}
-   }
-   
-   public void timeoutcheck()
-   {
-	   timer.schedule(new Timertask(),0, 5);
-   }
-   
-   public void timerexit()
-   {
-	   timer.cancel();
-   }
-
+   // -----------------------------------------------------------------------------------------------------------------
 
    public static void main(String args[]) throws Exception, UnknownHostException
+   {
+      InetAddress ServerIP = InetAddress.getLocalHost();
+      System.out.println(ServerIP);
+
+      int ServerPort = 9999;
+
+      Server thisServer = new Server(ServerIP, ServerPort);
+
+      thisServer.serverSocket.setSoTimeout(10000); 
+      
+      thisServer.timeoutcheck();
+       
+
+      while(true)
       {
-         InetAddress ServerIP = InetAddress.getLocalHost();
-         System.out.println(ServerIP);
-         int ServerPort = 9999;
+         // Receive Packet
+         TCPPacket revpkt = thisServer.ReceivePacket();
 
-         Server thisServer = new Server(ServerIP, ServerPort);
+         thisServer.ProcessPacket(revpkt);
 
-         thisServer.serverSocket.setSoTimeout(10000); 
-         
-         thisServer.timeoutcheck();
-          
-
-         while(true)
+         if(thisServer.CurrentAckNumber < 1000)
          {
-            // Receive Packet
-            TCPPacket revpkt = thisServer.ReceivePacket();
+         	if(thisServer.TimerQ.isEmpty())
+         		thisServer.SendNextPackets();
+         }
+         else
+         {	
+         	thisServer.SendFin();
+         	//System.out.println("Fin sent");
+         	while(!thisServer.TimerQ.isEmpty()){
+         		//System.out.println(thisServer.TimerQ.get(0).SequenceNumber);
+         		thisServer.TimerQ.remove(0);
+         	}
 
-            thisServer.ProcessPacket(revpkt);
+            System.out.println(thisServer.smoothrtt + "");
 
-            if(thisServer.CurrentAckNumber < 1000)
-            {
-            	if(thisServer.TimerQ.isEmpty())
-            		thisServer.SendNextPackets();
-            }
-            else
-            {	
-            	thisServer.SendFin();
-            	//System.out.println("Fin sent");
-            	while(!thisServer.TimerQ.isEmpty()){
-            		//System.out.println(thisServer.TimerQ.get(0).SequenceNumber);
-            		thisServer.TimerQ.remove(0);
-            	}
-            	thisServer.timerexit();
-               thisServer.writer.close();
-            }
+         	thisServer.timerexit();
+            thisServer.writer.close();
          }
       }
+   }
 } 
