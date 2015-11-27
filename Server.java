@@ -40,16 +40,20 @@ public class Server
 
    ArrayList<String> PacketList;
    int FixedPacketSize;
+   int NumPkts;
 
    ArrayList<TimerPair> TimerQ;
 
    PrintWriter writer;
+   //ArrayList<Float> cwValues; 
+   //ArrayList<Double> smoothrttValues;
 
    int DupCount;
    int LastAcknum;
 
    long timeOutPeriod;
    double smoothrtt;
+   long currrtt;
    double rttdev;
 
    // Code for generating random Strings for packets
@@ -67,7 +71,7 @@ public class Server
    void createPacketList()
    {
       PacketList = new ArrayList<String>();
-      for(int i = 0; i < 1000; i++)
+      for(int i = 0; i < NumPkts; i++)
          PacketList.add(randomString(FixedPacketSize));
    }
 
@@ -95,7 +99,8 @@ public class Server
       CongestionWindow = 1;
       SSThreshold = 20;
 
-      FixedPacketSize = 5;
+      FixedPacketSize = 1200;
+      NumPkts = 100000;
 
       // Create data that the server transmits on request
       createPacketList();
@@ -103,14 +108,17 @@ public class Server
 
       TimerQ = new ArrayList<TimerPair>();
 
-      writer = new PrintWriter("CW.txt");
+      writer = new PrintWriter("CW.csv");
+      //cwValues = new ArrayList<Float>();
+      //smoothrttValues = new ArrayList<Double>();
 
       DupCount = 1;
       LastAcknum = 0;
 
-      timeOutPeriod = 10;
-      smoothrtt = 10;
-      rttdev = 3;
+      timeOutPeriod = 5000;
+      smoothrtt = 3000;
+      currrtt = 3000;
+      rttdev = 500;
    }
 
    // Low Level Functions to send and receive packets
@@ -190,7 +198,9 @@ public class Server
       else
          CongestionWindow += 1.0/CongestionWindow;
 
-      writer.println(CongestionWindow + "");
+      writer.println(CongestionWindow + "," + smoothrtt);
+      //cwValues.add(CongestionWindow);
+      //smoothrttValues.add(smoothrtt);
    }
    
    void Timeout()
@@ -198,17 +208,23 @@ public class Server
       SSThreshold = (int)CongestionWindow / 2;
 	   CongestionWindow = 1;
 
-      writer.println(CongestionWindow + "");
+      writer.println(CongestionWindow + "," + smoothrtt);
+      //cwValues.add(CongestionWindow);
+      //smoothrttValues.add(smoothrtt);
    }
 
    void tripleDuplication()
    {
+      //System.out.println("tripleDuplication!");
+
       TimerQ.clear();
 
       SSThreshold = (int)CongestionWindow / 2;
       CongestionWindow = SSThreshold + 3;
 
-      writer.println(CongestionWindow + "");
+      writer.println(CongestionWindow + "," + smoothrtt);
+      //cwValues.add(CongestionWindow);
+      //smoothrttValues.add(smoothrtt);
    }
    
    // Checking for Timeouts
@@ -217,11 +233,12 @@ public class Server
    public void CalcTO(long rtt)
    {
       //System.out.println(rtt + "");
+      currrtt = rtt;
 
-      smoothrtt = 0.9 * smoothrtt + 0.1 * rtt;
+      smoothrtt = 0.99 * smoothrtt + 0.01 * rtt;
       
       double diff = Math.abs(smoothrtt - rtt);
-      rttdev = 0.9 * rttdev + 0.1 * diff;
+      rttdev = 0.99 * rttdev + 0.01 * diff;
 
       timeOutPeriod = (long)smoothrtt + (long)(4 * rttdev);
    }
@@ -235,7 +252,7 @@ public class Server
 	   while(!found && !TimerQ.isEmpty()){
 		   TimerPair tp = TimerQ.get(0);
 		   if(tp.SequenceNumber <= acknum){
-            CalcTO(System.currentTimeMillis() - tp.Timeout);
+            CalcTO(System.nanoTime()/1000 - tp.Timeout);
 			   TimerQ.remove(0);
 			   //System.out.println("Ack got and Queue element poped");
 		   }
@@ -249,7 +266,7 @@ public class Server
    {
 	 //add packet number and its timeout in TimerQ
 	      
-	   long current_time = System.currentTimeMillis();
+	   long current_time = System.nanoTime()/1000;
 	   long timeout = current_time;
 	   
 	   TimerPair tp_now = new TimerPair(CurrentSeqNumber,timeout);
@@ -264,10 +281,10 @@ public class Server
          if(!TimerQ.isEmpty())
          {
             TimerPair tp = TimerQ.get(0);
-            if(tp.Timeout + timeOutPeriod < System.currentTimeMillis())
+            if(tp.Timeout + timeOutPeriod < System.nanoTime()/1000)
             {
                TimerQ.clear();
-               Timeout();           
+               Timeout();        
             }
          }
          //System.out.println("Time check");
@@ -376,6 +393,8 @@ public class Server
       
       thisServer.timeoutcheck();
        
+      //boolean fileWritten = false;
+      System.out.println("Server Ready!");
 
       while(true)
       {
@@ -384,7 +403,7 @@ public class Server
 
          thisServer.ProcessPacket(revpkt);
 
-         if(thisServer.CurrentAckNumber < 1000)
+         if(thisServer.CurrentAckNumber < thisServer.NumPkts)
          {
          	if(thisServer.TimerQ.isEmpty())
          		thisServer.SendNextPackets();
@@ -398,11 +417,23 @@ public class Server
          		thisServer.TimerQ.remove(0);
          	}
 
-            System.out.println(thisServer.smoothrtt + "");
-
          	thisServer.timerexit();
             thisServer.writer.close();
+
+            // if(!fileWritten)
+            // {
+            //    for(int i = 0; i < thisServer.cwValues.size(); i++)
+            //       thisServer.writer.println(thisServer.cwValues.get(i) + "," + thisServer.smoothrttValues.get(i));                     
+
+            //    //thisServer.writer.println(Arrays.toString(thisServer.cwValues.toArray()));
+            //    //thisServer.writer.println(Arrays.toString(thisServer.smoothrttValues.toArray()));
+                  
+            //    thisServer.writer.close();
+
+            //    fileWritten = true;
+            // }
          }
       }
+
    }
 } 

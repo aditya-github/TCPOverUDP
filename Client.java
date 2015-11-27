@@ -122,8 +122,8 @@ class Client
             // Send ACK for received packet
             SendAck();
 
-            System.out.println("Received: " + receiveData);
-            System.out.println("Packets received: " + (CurrentAckNumber - 1));
+            //System.out.println("Received: " + receiveData);
+            //System.out.println("Packets received: " + (CurrentAckNumber - 1));
          }
 
          try
@@ -132,7 +132,7 @@ class Client
          }
          catch (Exception E)
          {
-            System.out.println("Sending Timeout Ack");
+            //System.out.println("Sending Timeout Ack");
             SendAck();
          }
 
@@ -146,7 +146,7 @@ class Client
 
    public static void main(String args[]) throws Exception, UnknownHostException
    {
-      InetAddress ServerIP = InetAddress.getByName("");
+      InetAddress ServerIP = InetAddress.getByName("10.208.20.185");
       InetAddress ClientIP = InetAddress.getLocalHost();
       int ServerPort = 9999;
 
