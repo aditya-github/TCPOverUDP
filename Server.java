@@ -2,6 +2,8 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.util.Random;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 class TimerPair
 {
@@ -43,6 +45,7 @@ public class Server
    int NumPkts;
 
    ArrayList<TimerPair> TimerQ;
+   final Lock _mutex = new ReentrantLock(true);
 
    PrintWriter writer;
    //ArrayList<Float> cwValues; 
@@ -99,7 +102,7 @@ public class Server
       CongestionWindow = 1;
       SSThreshold = 20;
 
-      FixedPacketSize = 1200;
+      FixedPacketSize = 512;
       NumPkts = 100000;
 
       // Create data that the server transmits on request
@@ -217,7 +220,9 @@ public class Server
    {
       //System.out.println("tripleDuplication!");
 
+      _mutex.lock();
       TimerQ.clear();
+      _mutex.unlock();
 
       SSThreshold = (int)CongestionWindow / 2;
       CongestionWindow = SSThreshold + 3;
@@ -246,7 +251,8 @@ public class Server
    void removeFromQueue(int acknum)
    {
 	   //Iterator itr = TimerQ.iterator();
-	   
+	   _mutex.lock();
+
 	   Boolean found = false;
 	   
 	   while(!found && !TimerQ.isEmpty()){
@@ -260,6 +266,8 @@ public class Server
 			   found = true;
 		   }
 	   }
+
+      _mutex.unlock();
    }
    
    void putInQueue()
@@ -271,13 +279,16 @@ public class Server
 	   
 	   TimerPair tp_now = new TimerPair(CurrentSeqNumber,timeout);
 	      
+      _mutex.lock();   
 	   TimerQ.add(tp_now);
+      mutex.unlock();   
    }
 
    class Timertask extends TimerTask 
    {
       public void run()
       {
+         mutex.lock();   
          if(!TimerQ.isEmpty())
          {
             TimerPair tp = TimerQ.get(0);
@@ -287,6 +298,7 @@ public class Server
                Timeout();        
             }
          }
+         mutex.unlock();   
          //System.out.println("Time check");
       }
    }
@@ -382,7 +394,7 @@ public class Server
 
    public static void main(String args[]) throws Exception, UnknownHostException
    {
-      InetAddress ServerIP = InetAddress.getLocalHost();
+      InetAddress ServerIP = InetAddress.getByName("10.42.0.1");
       System.out.println(ServerIP);
 
       int ServerPort = 9999;
@@ -404,7 +416,7 @@ public class Server
          thisServer.ProcessPacket(revpkt);
 
          if(thisServer.CurrentAckNumber < thisServer.NumPkts)
-         {
+         {            
          	if(thisServer.TimerQ.isEmpty())
          		thisServer.SendNextPackets();
          }
@@ -414,24 +426,13 @@ public class Server
          	//System.out.println("Fin sent");
          	while(!thisServer.TimerQ.isEmpty()){
          		//System.out.println(thisServer.TimerQ.get(0).SequenceNumber);
+               mutex.lock();   
          		thisServer.TimerQ.remove(0);
+               mutex.unlock();   
          	}
 
          	thisServer.timerexit();
             thisServer.writer.close();
-
-            // if(!fileWritten)
-            // {
-            //    for(int i = 0; i < thisServer.cwValues.size(); i++)
-            //       thisServer.writer.println(thisServer.cwValues.get(i) + "," + thisServer.smoothrttValues.get(i));                     
-
-            //    //thisServer.writer.println(Arrays.toString(thisServer.cwValues.toArray()));
-            //    //thisServer.writer.println(Arrays.toString(thisServer.smoothrttValues.toArray()));
-                  
-            //    thisServer.writer.close();
-
-            //    fileWritten = true;
-            // }
          }
       }
 

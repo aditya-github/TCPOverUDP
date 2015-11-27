@@ -48,12 +48,33 @@ class Client
       clientSocket.send(sendPacket);
    }
 
+   public void SendSyn() throws IOException
+   {
+      String stringpkt = "Syn";
+
+      Boolean[] ControlBit = new Boolean[6];
+      Arrays.fill(ControlBit, Boolean.FALSE);
+      ControlBit[4] = true;
+
+      SendPacket(stringpkt, ControlBit);
+
+      //System.out.println("Syn Sent!");
+   }
+
    public TCPPacket ReceivePacket() throws IOException
    {
       byte[] receiveData = new byte[1024];
-
       DatagramPacket receivePacket = new DatagramPacket(receiveData, receiveData.length);
-      clientSocket.receive(receivePacket);
+
+      try
+      {
+         clientSocket.receive(receivePacket);
+      }
+      catch (SocketTimeoutException e)
+      {
+         SendSyn();
+      }
+         
       String stringData = new String(receivePacket.getData());
 
       TCPPacket revpkt = new TCPPacket(stringData);
@@ -71,16 +92,12 @@ class Client
       SendPacket(stringpkt, ControlBit);
    }
 
-   public void Handshake() throws IOException
+   public void Handshake() throws IOException, UnknownHostException
    {
+      System.out.println("handshake!");
+
       // Send Syn
-      String stringpkt = "Syn";
-
-      Boolean[] ControlBit = new Boolean[6];
-      Arrays.fill(ControlBit, Boolean.FALSE);
-      ControlBit[4] = true;
-
-      SendPacket(stringpkt, ControlBit);
+      SendSyn();
 
       // Receive SYN + ACK
 
@@ -88,7 +105,7 @@ class Client
       while(!GotSynAck)
       {
          TCPPacket revpkt = ReceivePacket();
-         ControlBit = revpkt.getControlBit();
+         Boolean[] ControlBit = revpkt.getControlBit();
 
          if(ControlBit[4] == true && ControlBit[1] == true)
          {
@@ -146,13 +163,16 @@ class Client
 
    public static void main(String args[]) throws Exception, UnknownHostException
    {
-      InetAddress ServerIP = InetAddress.getByName("10.208.20.185");
-      InetAddress ClientIP = InetAddress.getLocalHost();
+      //byte[] s_ip = new byte[]{192, 168, 0, 100};
+      //byte[] c_ip = new byte[]{192, 168, 0, 101};
+
+      InetAddress ServerIP = InetAddress.getByName("10.42.0.1");
+      InetAddress ClientIP = InetAddress.getByName("10.42.0.26");
       int ServerPort = 9999;
 
       Client thisClient = new Client(ClientIP, ServerIP, ServerPort);
 
-      thisClient.clientSocket.setSoTimeout(10); 
+      thisClient.clientSocket.setSoTimeout(10000); 
 
       thisClient.Handshake();
       thisClient.ReceiveData();
