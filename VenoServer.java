@@ -18,7 +18,7 @@ class TimerPair
    
 }
 
-public class Server
+public class VenoServer
 {
    DatagramSocket serverSocket;
    
@@ -59,6 +59,10 @@ public class Server
    long currrtt;
    double rttdev;
 
+   long minrtt;
+   float ApproxQueueLen;
+   float Beta;
+
    // Code for generating random Strings for packets
    // -----------------------------------------------------------------------------------------------------------------
    static final String AB = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -87,7 +91,7 @@ public class Server
    // Constructor
    // ----------------------------------------------------------------------------------------------------------------- 
 
-   public Server(InetAddress ServerIP, int ServerPort) throws SocketException, FileNotFoundException
+   public VenoServer(InetAddress ServerIP, int ServerPort) throws SocketException, FileNotFoundException
    {
       // Create Server Socket
       this.serverSocket = new DatagramSocket(ServerPort);
@@ -122,6 +126,10 @@ public class Server
       smoothrtt = 3000;
       currrtt = 3000;
       rttdev = 500;
+
+      minrtt = 3000;
+      ApproxQueueLen = 0;
+      Beta = 3;
    }
 
    // Low Level Functions to send and receive packets
@@ -199,11 +207,14 @@ public class Server
       if((int)CongestionWindow < SSThreshold)
          CongestionWindow += 1.0;
       else
-         CongestionWindow += 1.0/CongestionWindow;
+      {
+         if(ApproxQueueLen < Beta)
+            CongestionWindow += 1.0/CongestionWindow;
+         else
+            CongestionWindow += 0.5/CongestionWindow;
+      }
 
       writer.println(CongestionWindow + "," + smoothrtt);
-      //cwValues.add(CongestionWindow);
-      //smoothrttValues.add(smoothrtt);
    }
 
    void Timeout()
@@ -212,8 +223,6 @@ public class Server
 	   CongestionWindow = 1;
 
       writer.println(CongestionWindow + "," + smoothrtt);
-      //cwValues.add(CongestionWindow);
-      //smoothrttValues.add(smoothrtt);
    }
 
    void tripleDuplication()
@@ -224,12 +233,14 @@ public class Server
       TimerQ.clear();
       _mutex.unlock();
 
-      SSThreshold = (int)CongestionWindow / 2;
+      if(ApproxQueueLen < Beta)
+         SSThreshold = (int)CongestionWindow * 4 / 5;
+      else
+         SSThreshold = (int)CongestionWindow / 2;
+      
       CongestionWindow = SSThreshold + 3;
 
       writer.println(CongestionWindow + "," + smoothrtt);
-      //cwValues.add(CongestionWindow);
-      //smoothrttValues.add(smoothrtt);
    }
    
    // Checking for Timeouts
@@ -248,6 +259,16 @@ public class Server
       timeOutPeriod = (long)smoothrtt + (long)(4 * rttdev);
    }
 
+   public void CalcQueueLen(long rtt)
+   {
+      if(minrtt > rtt)
+         minrtt = rtt;
+
+      float diff = CongestionWindow/(float)minrtt - CongestionWindow/(float)smoothrtt;
+
+      ApproxQueueLen = diff * minrtt;
+   }
+
    void removeFromQueue(int acknum)
    {
 	   //Iterator itr = TimerQ.iterator();
@@ -259,6 +280,7 @@ public class Server
 		   TimerPair tp = TimerQ.get(0);
 		   if(tp.SequenceNumber <= acknum){
             CalcTO(System.nanoTime()/1000 - tp.Timeout);
+            CalcQueueLen(System.nanoTime()/1000 - tp.Timeout);
 			   TimerQ.remove(0);
 			   //System.out.println("Ack got and Queue element poped");
 		   }
@@ -399,14 +421,14 @@ public class Server
 
       int ServerPort = 9999;
 
-      Server thisServer = new Server(ServerIP, ServerPort);
+      VenoServer thisServer = new VenoServer(ServerIP, ServerPort);
 
       thisServer.serverSocket.setSoTimeout(10000); 
       
       thisServer.timeoutcheck();
        
       //boolean fileWritten = false;
-      System.out.println("Server Ready!");
+      System.out.println("VenoServer Ready!");
 
       while(true)
       {
